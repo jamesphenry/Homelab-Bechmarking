@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Homelab Benchmark Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- Header Section -->
+    <header class="main-header">
+        <div class="header-content">
+            <div class="logo-section">
+                <div class="logo-icon">🖥️</div>
+                <h1>Homelab <span class="highlight">Benchmark</span></h1>
+            </div>
+            <div class="header-actions">
+                <span class="status-badge connected" id="connectionStatus">● Connected</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Dashboard -->
+    <main class="dashboard">
+        <!-- Control Panel & Live Metrics Row -->
+        <section class="control-metrics-row">
+            <!-- Benchmark Control Panel -->
+            <div class="benchmark-panel">
+                <h2>🚀 Run Benchmark</h2>
+                <div class="control-group">
+                    <div class="run-input">
+                        <input type="text" id="label" placeholder="Run label (e.g., pre-upgrade)">
+                    </div>
+                    
+                    <div class="toggles">
+                        <label class="toggle">
+                            <input class="form-check-input" type="checkbox" id="gpuBenchmark" checked>
+                            <span>GPU Monitoring</span>
+                        </label>
+                        <label class="toggle">
+                            <input class="form-check-input" type="checkbox" id="ollamaBenchmark" checked>
+                            <span>LLM Benchmark</span>
+                        </label>
+                    </div>
+
+                    <!-- Ollama Model Selector -->
+                    <div class="model-selector" id="ollamaSelector" style="display: none;">
+                        <label for="ollamaModel" style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 0.5rem; display: block;">Select Ollama Model:</label>
+                        <select id="ollamaModel" style="width: 100%; padding: 0.5rem; background: var(--bg-glass); border: 1px solid var(--border-color); border-radius: var(--radius-md); color: var(--text-primary); font-size: 0.875rem;">
+                            <option value="">Loading models...</option>
+                        </select>
+                    </div>
+
+                    <button class="btn-orange" id="runBenchmarkBtn" onclick="startBenchmark()">
+                        <span class="spinner" id="benchmarkSpinner" style="display: none;"></span>
+                        Run Benchmark
+                    </button>
+                    
+                    <div class="secondary-actions">
+                        <button class="btn-secondary" onclick="clearLogs()">Clear Logs</button>
+                        <button class="btn-secondary btn-danger" onclick="resetAllRuns()">Reset All</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Metrics Section -->
+            <div class="live-metrics" id="liveMetrics">
+                <div class="metric-card cpu fade-in">
+                    <div class="metric-icon">⚡</div>
+                    <div class="metric-value orange" id="cpuValue">--</div>
+                    <div class="metric-label">CPU Events/sec</div>
+                    <div class="metric-trend" id="cpuTrend"></div>
+                </div>
+                <div class="metric-card memory fade-in stagger-1">
+                    <div class="metric-icon">💾</div>
+                    <div class="metric-value" id="memoryValue">--</div>
+                    <div class="metric-label">Memory MB/s</div>
+                    <div class="metric-trend" id="memoryTrend"></div>
+                </div>
+                <div class="metric-card disk fade-in stagger-2">
+                    <div class="metric-icon">💿</div>
+                    <div class="metric-value" id="diskValue">--</div>
+                    <div class="metric-label">Disk MB/s</div>
+                    <div class="metric-trend" id="diskTrend"></div>
+                </div>
+                <div class="metric-card gpu fade-in stagger-3">
+                    <div class="metric-icon">🎮</div>
+                    <div class="metric-value" id="gpuValue">--</div>
+                    <div class="metric-label">GPU Temp °C</div>
+                    <div class="metric-trend" id="gpuTrend"></div>
+                </div>
+                <div class="metric-card llm fade-in stagger-4">
+                    <div class="metric-icon">🤖</div>
+                    <div class="metric-value" id="llmValue">--</div>
+                    <div class="metric-label">LLM Tokens/sec</div>
+                    <div class="metric-trend" id="llmTrend"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Charts Grid -->
+        <section class="charts-grid">
+            <div class="chart-card fade-in">
+                <h3>⚡ CPU Performance</h3>
+                <div class="chart-container">
+                    <canvas id="cpuChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card fade-in stagger-1">
+                <h3>💾 Memory & Disk I/O</h3>
+                <div class="chart-container">
+                    <canvas id="memoryDiskChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card fade-in stagger-2">
+                <h3>🎮 GPU Metrics</h3>
+                <div class="chart-container">
+                    <canvas id="gpuChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card fade-in stagger-3">
+                <h3>🤖 LLM Performance</h3>
+                <div class="chart-container">
+                    <canvas id="llmChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Logs & History Row -->
+        <section class="logs-history-row">
+            <!-- Live Logs Panel -->
+            <div class="logs-panel">
+                <div class="panel-header">
+                    <h3>📊 Live Logs</h3>
+                    <span class="connection-status" id="logConnectionStatus">Connected</span>
+                </div>
+                <pre id="log" class="log-terminal"></pre>
+            </div>
+
+            <!-- History Panel -->
+            <div class="history-panel">
+                <div class="panel-header">
+                    <h3>📈 Benchmark History</h3>
+                    <div class="history-actions">
+                        <button class="btn-small" onclick="refreshRuns()">Refresh</button>
+                        <button class="btn-small btn-danger" onclick="resetAllRuns()">Clear All</button>
+                    </div>
+                </div>
+                <div class="history-content">
+                    <table class="history-table">
+                        <thead>
+                            <tr>
+                                <th>Run Name</th>
+                                <th>Date</th>
+                                <th>CPU Score</th>
+                                <th>Memory</th>
+                                <th>Disk</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="runsTableBody">
+                            <tr>
+                                <td colspan="6" class="no-data">
+                                    Loading benchmark history...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Comparison Section -->
+        <section class="comparison-section" style="display: none;" id="comparisonSection">
+            <div class="comparison-chart-container">
+                <div class="comparison-controls">
+                    <h3>📊 Run Comparison</h3>
+                    <div class="tabs-nav">
+                        <button class="tab-btn active" onclick="showComparisonTab('radar')">Radar View</button>
+                        <button class="tab-btn" onclick="showComparisonTab('bar')">Bar Chart</button>
+                        <button class="tab-btn" onclick="showComparisonTab('trends')">Trends</button>
+                    </div>
+                </div>
+                
+                <div class="comparison-content">
+                    <div class="form-check-container">
+                        <label class="form-label">Select runs to compare:</label>
+                        <div id="compareCheckboxes" class="border rounded p-3" style="max-height: 150px; overflow-y: auto;">
+                            <!-- Checkboxes will be populated here -->
+                        </div>
+                        <div class="mt-2">
+                            <button class="btn-orange" onclick="updateComparisonChart()">Compare Selected</button>
+                            <button class="btn-secondary ms-2" onclick="clearComparison()">Clear Selection</button>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <canvas id="comparisonChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- LLM Response Modal -->
+        <div id="llmResponseModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 2000;">
+            <div class="modal-content" style="background: var(--bg-card); border: 1px solid var(--border-orange); border-radius: var(--radius-lg); max-width: 800px; margin: 50px auto; padding: 20px; max-height: 80vh; overflow-y: auto;">
+                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3 style="color: var(--orange-primary); margin: 0;">🤖 LLM Response</h3>
+                    <button onclick="closeLlmModal()" style="background: none; border: none; color: var(--text-secondary); font-size: 24px; cursor: pointer;">&times;</button>
+                </div>
+                <div id="llmResponseContent" style="color: var(--text-primary); font-family: 'Segoe UI', sans-serif; line-height: 1.8; white-space: pre-wrap;"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Custom JavaScript -->
+    <script>
+// DEBUG: Global variables
+let ws = null;
+let charts = {};
+let currentRunData = {};
+let allRunsData = {};
+let connectionRetries = 0;
+let maxRetries = 5;
+let ollamaModels = [];
+let lastMetrics = {};
+
+// DEBUG: Console logging
+console.log('🚀 Dashboard script starting...');
+
+function logToConsole(message) {
+    console.log(`[DASHBOARD] ${message}`);
+    const logEl = document.getElementById('log');
+    if (logEl) {
+        const timestamp = new Date().toLocaleTimeString();
+        const logEntry = document.createElement('div');
+        logEntry.className = 'log-entry';
+        logEntry.innerHTML = `
+            <span class="log-timestamp">[${timestamp}]</span>
+            <span class="log-message">${message}</span>
+        `;
+        logEl.appendChild(logEntry);
+        logEl.scrollTop = logEl.scrollHeight;
+    }
+}
+
+// WebSocket connection
+function connectWebSocket() {
+    logToConsole('🔄 Attempting WebSocket connection...');
+    
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    
+    logToConsole(`📡 Connecting to: ${wsUrl}`);
+    
+    try {
+        ws = new WebSocket(wsUrl);
+        
+        ws.onopen = function() {
+            logToConsole('✅ WebSocket connected successfully');
+            updateConnectionStatus('Connected', 'connected');
+            connectionRetries = 0;
+        };
+        
+        ws.onclose = function(event) {
+            logToConsole(`❌ WebSocket disconnected (code: ${event.code})`);
+            updateConnectionStatus('Disconnected', 'disconnected');
+            
+            if (connectionRetries < maxRetries) {
+                connectionRetries++;
+                logToConsole(`🔄 Reconnecting... (${connectionRetries}/${maxRetries})`);
+                setTimeout(connectWebSocket, 3000);
+            } else {
+                logToConsole('❌ Max reconnection attempts reached');
+            }
+        };
+        
+        ws.onerror = function(error) {
+            logToConsole('❌ WebSocket error');
+            console.error('WebSocket error:', error);
+            updateConnectionStatus('Error', 'disconnected');
+        };
+        
+        ws.onmessage = function(event) {
+            logToConsole(`📨 Received: ${event.data.substring(0, 100)}...`);
+            parseBenchmarkResult(event.data);
+        };
+        
+    } catch (error) {
+        logToConsole(`❌ Failed to create WebSocket: ${error.message}`);
+    }
+}
+
+// Update connection status
+function updateConnectionStatus(status, type) {
+    const statusBadge = document.getElementById('connectionStatus');
+    const logStatus = document.getElementById('logConnectionStatus');
+    
+    if (statusBadge) {
+        statusBadge.textContent = `● ${status}`;
+        statusBadge.className = `status-badge ${type}`;
+    }
+    
+    if (logStatus) {
+        logStatus.textContent = status;
+        logStatus.className = `connection-status ${type}`;
+    }
+}
+
+// Start benchmark
+function startBenchmark() {
+    logToConsole('🎯 startBenchmark() called');
+    
+    const labelInput = document.getElementById('label');
+    const label = labelInput?.value?.trim();
+    
+    if (!label) {
+        logToConsole('❌ No label entered');
+        alert('Please enter a run label');
+        return;
+    }
+    
+    logToConsole(`📝 Label: "${label}"`);
+    
+    // Check WebSocket
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        logToConsole('❌ WebSocket not connected');
+        alert('WebSocket not connected. Please wait or refresh the page.');
+        return;
+    }
+    
+    logToConsole('✅ WebSocket connected, sending command...');
+    
+    // Get options
+    const gpuEnabled = document.getElementById('gpuBenchmark')?.checked || false;
+    const ollamaEnabled = document.getElementById('ollamaBenchmark')?.checked || false;
+    const selectedModel = document.getElementById('ollamaModel')?.value || '';
+
+    logToConsole(`⚙️ Options: GPU=${gpuEnabled}, Ollama=${ollamaEnabled}, Model=${selectedModel}`);
+
+    // Send command
+    const command = `run:${label}:gpu=${gpuEnabled}:ollama=${ollamaEnabled}:model=${selectedModel}`;
+    logToConsole(`📤 Sending: ${command}`);
+    
+    try {
+        ws.send(command);
+        logToConsole('✅ Command sent successfully');
+        
+        // Show spinner
+        const spinner = document.getElementById('benchmarkSpinner');
+        const btn = document.getElementById('runBenchmarkBtn');
+        
+        if (spinner) spinner.style.display = 'inline-block';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Running...';
+        }
+        
+    } catch (error) {
+        logToConsole(`❌ Failed to send command: ${error.message}`);
+    }
+}
+
+// Clear logs
+function clearLogs() {
+    const logEl = document.getElementById('log');
+    if (logEl) {
+        logEl.innerHTML = '';
+    }
+    logToConsole('🧹 Logs cleared');
+}
+
+// Parse benchmark results
+function parseBenchmarkResult(message) {
+    logToConsole(`🔍 Parsing: ${message.substring(0, 50)}...`);
+    
+    // Extract run name
+    const runMatch = message.match(/\[(.*?)\]/);
+    if (!runMatch) {
+        logToConsole('⚠️ No run name found');
+        return;
+    }
+    
+    const runName = runMatch[1];
+    logToConsole(`📊 Run: ${runName}`);
+    
+    // Update current run data
+    if (!currentRunData.name || currentRunData.name !== runName) {
+        currentRunData = { name: runName };
+    }
+    
+    // Parse CPU
+    if (message.includes('events per second')) {
+        const cpuMatch = message.match(/(\d+\.\d+)\s+events per second/);
+        if (cpuMatch) {
+            const value = parseFloat(cpuMatch[1]);
+            logToConsole(`📈 CPU: ${value} events/sec`);
+            
+            if (message.includes('1 thread')) {
+                currentRunData.cpu1Thread = value;
+            } else if (message.includes('all threads')) {
+                currentRunData.cpuAllThreads = value;
+                updateMetricCard('cpu', value.toFixed(0));
+                updateChart('cpu', [currentRunData.cpu1Thread || 0, value]);
+            }
+        }
+    }
+    
+    // Parse GPU
+    if (message.includes('GPU:')) {
+        const gpuMatch = message.match(/GPU:\s*(\d+)\.0°C\s*\|\s*⚡\s*(\d+)\.0%\s*\|\s*💾\s*(\d+)\.0\/(\d+)\.0MB/);
+        if (gpuMatch) {
+            const temp = parseInt(gpuMatch[1]);
+            const util = parseInt(gpuMatch[2]);
+            const memUsed = parseInt(gpuMatch[3]);
+            
+            currentRunData.gpu = currentRunData.gpu || {};
+            currentRunData.gpu.temperature = temp;
+            currentRunData.gpu.utilization = util;
+            currentRunData.gpu.memory_used = memUsed;
+            
+            updateMetricCard('gpu', temp);
+            updateChart('gpu', [temp, util]);
+            
+            logToConsole(`🎮 GPU: ${temp}°C | ${util}% | ${memUsed}MB`);
+        }
+    }
+    
+    // Parse Ollama
+    if (message.includes('Tokens/sec:')) {
+        const match = message.match(/Tokens\/sec:\s*(\d+\.?\d*)/);
+        if (match) {
+            currentRunData.ollama = currentRunData.ollama || {};
+            currentRunData.ollama.tokens_per_sec = parseFloat(match[1]);
+            updateMetricCard('llm', currentRunData.ollama.tokens_per_sec.toFixed(1));
+            updateChart('llm', [currentRunData.ollama.tokens_per_sec, currentRunData.ollama.latency || 0, currentRunData.ollama.memory_mb || 0]);
+            logToConsole(`🤖 Tokens/sec: ${currentRunData.ollama.tokens_per_sec}`);
+        }
+    }
+    
+    if (message.includes('Latency:')) {
+        const match = message.match(/Latency:\s*(\d+\.?\d*)/);
+        if (match) {
+            currentRunData.ollama = currentRunData.ollama || {};
+            currentRunData.ollama.latency = parseFloat(match[1]);
+            updateChart('llm', [currentRunData.ollama.tokens_per_sec || 0, currentRunData.ollama.latency, currentRunData.ollama.memory_mb || 0]);
+            logToConsole(`⏱️ Latency: ${currentRunData.ollama.latency}s`);
+        }
+    }
+    
+    if (message.includes('Memory:') && message.includes('MB')) {
+        const match = message.match(/Memory:\s*(\d+)\s*MB/);
+        if (match) {
+            currentRunData.ollama = currentRunData.ollama || {};
+            currentRunData.ollama.memory_mb = parseInt(match[1]);
+            updateChart('llm', [currentRunData.ollama.tokens_per_sec || 0, currentRunData.ollama.latency || 0, currentRunData.ollama.memory_mb]);
+            logToConsole(`💾 Memory: ${currentRunData.ollama.memory_mb}MB`);
+        }
+    }
+    
+    // Parse Memory
+    if (message.includes('Memory test') && message.includes('MB/sec')) {
+        const memoryMatch = message.match(/read:\s*(\d+\.?\d*) MB\/sec.*write:\s*(\d+\.?\d*) MB\/sec/);
+        if (memoryMatch) {
+            const read = parseFloat(memoryMatch[1]);
+            const write = parseFloat(memoryMatch[2]);
+            const total = read + write;
+            
+            currentRunData.memory = { read, write };
+            updateMetricCard('memory', total.toFixed(1));
+            updateChart('memoryDisk', [read, write, 0, 0]); // memory read, write, disk read, disk write
+            logToConsole(`💾 Memory: ${total.toFixed(1)} MB/s`);
+        }
+    }
+    
+    // Parse Disk
+    if (message.includes('Disk test') && message.includes('MB/s')) {
+        const diskMatch = message.match(/read:\s*(\d+\.?\d*) MB\/s.*write:\s*(\d+\.?\d*) MB\/s/);
+        if (diskMatch) {
+            const read = parseFloat(diskMatch[1]);
+            const write = parseFloat(diskMatch[2]);
+            const total = read + write;
+            
+            currentRunData.disk = { read, write };
+            updateMetricCard('disk', total.toFixed(1));
+            updateChart('memoryDisk', [
+                currentRunData.memory?.read || 0,
+                currentRunData.memory?.write || 0,
+                read,
+                write
+            ]);
+            logToConsole(`💿 Disk: ${total.toFixed(1)} MB/s`);
+        }
+    }
+    
+    // Benchmark completed
+    if (message.includes('Benchmark finished')) {
+        const spinner = document.getElementById('benchmarkSpinner');
+        const btn = document.getElementById('runBenchmarkBtn');
+        
+        if (spinner) spinner.style.display = 'none';
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = 'Run Benchmark';
+        }
+        
+        // Refresh runs list
+        loadHistoricalRuns();
+    }
+}
+
+// Update metric card
+function updateMetricCard(type, value) {
+    const element = document.getElementById(`${type}Value`);
+    if (element) {
+        element.textContent = value;
+        
+        // Calculate trend
+        const lastValue = lastMetrics[type];
+        const trendElement = document.getElementById(`${type}Trend`);
+        
+        if (lastValue !== undefined && trendElement) {
+            const diff = value - lastValue;
+            if (diff > 0) {
+                trendElement.innerHTML = `<span class="up">↑ ${diff.toFixed(1)}</span>`;
+            } else if (diff < 0) {
+                trendElement.innerHTML = `<span class="down">↓ ${Math.abs(diff).toFixed(1)}</span>`;
+            } else {
+                trendElement.innerHTML = `<span class="neutral">—</span>`;
+            }
+        }
+        
+        lastMetrics[type] = value;
+    }
+}
+
+// Update chart
+function updateChart(chartName, data) {
+    logToConsole(`📊 Updating ${chartName}: ${JSON.stringify(data)}`);
+    if (charts[chartName]) {
+        charts[chartName].data.datasets[0].data = data;
+        charts[chartName].update('none');
+    }
+}
+
+// Initialize charts
+function initializeCharts() {
+    logToConsole('🎨 Initializing charts...');
+    
+    const chartDefaults = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                labels: { color: '#ffffff' },
+                display: true,
+                position: 'top'
+            }
+        },
+        scales: {
+            x: {
+                grid: { color: 'rgba(255,255,255,0.1)' },
+                ticks: { color: '#b0b0b0' }
+            },
+            y: {
+                grid: { color: 'rgba(255,255,255,0.1)' },
+                ticks: { color: '#b0b0b0' },
+                beginAtZero: true
+            }
+        }
+    };
+    
+    // CPU Chart
+    charts.cpu = new Chart(document.getElementById('cpuChart'), {
+        type: 'bar',
+        data: {
+            labels: ['1 Thread', 'All Threads'],
+            datasets: [{
+                label: 'Events/sec',
+                data: [0, 0],
+                backgroundColor: ['#ff6b35', '#ff8c42'],
+                borderColor: '#ff6b35',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            ...chartDefaults,
+            plugins: {
+                ...chartDefaults.plugins,
+                title: {
+                    display: true,
+                    text: 'CPU Performance',
+                    color: '#ffffff'
+                }
+            }
+        }
+    });
+    
+    // Memory & Disk Chart
+    charts.memoryDisk = new Chart(document.getElementById('memoryDiskChart'), {
+        type: 'bar',
+        data: {
+            labels: ['Memory Read', 'Memory Write', 'Disk Read', 'Disk Write'],
+            datasets: [{
+                label: 'MB/s',
+                data: [0, 0, 0, 0],
+                backgroundColor: ['#00d4ff', '#00d4ff', '#ffc107', '#ffc107'],
+                borderColor: '#00d4ff',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            ...chartDefaults,
+            plugins: {
+                ...chartDefaults.plugins,
+                title: {
+                    display: true,
+                    text: 'Memory & Disk Performance',
+                    color: '#ffffff'
+                }
+            }
+        }
+    });
+    
+    // GPU Chart
+    charts.gpu = new Chart(document.getElementById('gpuChart'), {
+        type: 'line',
+        data: {
+            labels: ['Temperature', 'Utilization'],
+            datasets: [{
+                label: 'GPU Metrics',
+                data: [0, 0],
+                borderColor: '#9b59b6',
+                backgroundColor: 'rgba(155, 89, 182, 0.1)',
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            ...chartDefaults,
+            plugins: {
+                ...chartDefaults.plugins,
+                title: {
+                    display: true,
+                    text: 'GPU Monitoring',
+                    color: '#ffffff'
+                }
+            }
+        }
+    });
+    
+    // LLM Chart
+    charts.llm = new Chart(document.getElementById('llmChart'), {
+        type: 'radar',
+        data: {
+            labels: ['Tokens/sec', 'Latency (s)', 'Memory (MB)'],
+            datasets: [{
+                label: 'LLM Performance',
+                data: [0, 0, 0],
+                borderColor: '#e74c3c',
+                backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                fill: true,
+                pointBackgroundColor: '#e74c3c',
+                pointBorderColor: '#ffffff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    labels: { color: '#ffffff' }
+                },
+                title: {
+                    display: true,
+                    text: 'LLM Performance',
+                    color: '#ffffff'
+                }
+            },
+            scales: {
+                r: {
+                    grid: { color: 'rgba(255,255,255,0.1)' },
+                    ticks: { color: '#b0b0b0' },
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+    
+    // Comparison Chart
+    charts.comparison = new Chart(document.getElementById('comparisonChart'), {
+        type: 'radar',
+        data: {
+            labels: ['CPU 1T', 'CPU All', 'Memory', 'Disk Read', 'Disk Write', 'LLM Tokens/s', 'LLM Latency', 'LLM Memory'],
+            datasets: []
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Performance Comparison',
+                    color: '#ffffff'
+                },
+                legend: {
+                    labels: { color: '#ffffff' }
+                }
+            },
+            scales: {
+                r: {
+                    grid: { color: 'rgba(255,255,255,0.1)' },
+                    ticks: { color: '#b0b0b0' },
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+    
+    logToConsole('✅ Charts initialized');
+}
+
+// Load historical runs
+async function loadHistoricalRuns() {
+    logToConsole('📋 Loading historical runs...');
+    try {
+        const response = await fetch('/api/runs');
+        const runs = await response.json();
+        logToConsole(`📊 Received ${runs.length} runs from API`);
+        
+        const tableBody = document.getElementById('runsTableBody');
+        const compareCheckboxes = document.getElementById('compareCheckboxes');
+        
+        if (tableBody) tableBody.innerHTML = '';
+        if (compareCheckboxes) compareCheckboxes.innerHTML = '';
+        
+        if (runs.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="6" class="no-data">No benchmark runs found</td></tr>';
+            return;
+        }
+        
+        runs.forEach((run, index) => {
+            // Calculate scores for this run
+            const cpuScore = run.cpuAllThreads ? run.cpuAllThreads.toFixed(0) : 'N/A';
+            const memoryScore = run.memory ? (run.memory.read + run.memory.write).toFixed(1) : 'N/A';
+            const diskScore = run.disk ? (run.disk.read + run.disk.write).toFixed(1) : 'N/A';
+
+            // Add to table
+            if (tableBody) {
+                const row = document.createElement('tr');
+                
+                row.innerHTML = `
+                    <td>
+                        <div class="run-name">${run.name}</div>
+                        <div class="run-date">${new Date(run.date).toLocaleDateString()}</div>
+                    </td>
+                    <td class="score">${cpuScore}</td>
+                    <td class="score">${memoryScore}</td>
+                    <td class="score">${diskScore}</td>
+                    <td>
+                        <div class="table-actions">
+                            <button class="action-btn" onclick="viewRun('${run.name}')">View</button>
+                            <button class="action-btn" onclick="addToComparison('${run.name}')">Compare</button>
+                            <button class="action-btn" onclick="viewLlmResponse('${run.name}')">Response</button>
+                            <button class="action-btn delete" onclick="deleteRun('${run.name}')">Delete</button>
+                        </div>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            }
+            
+            // Add checkbox for comparison
+            if (compareCheckboxes) {
+                const checkboxDiv = document.createElement('div');
+                checkboxDiv.className = 'form-check';
+                checkboxDiv.innerHTML = `
+                    <input class="form-check-input comparison-checkbox" type="checkbox" value="${run.name}" id="compare_${index}">
+                    <label class="form-check-label" for="compare_${index}">
+                        <strong>${run.name}</strong>
+                        <small class="text-muted d-block">CPU: ${cpuScore} | ${new Date(run.date).toLocaleDateString()}</small>
+                    </label>
+                `;
+                compareCheckboxes.appendChild(checkboxDiv);
+            }
+            
+            allRunsData[run.name] = run;
+        });
+        
+        logToConsole(`✅ Loaded ${runs.length} historical runs`);
+        
+    } catch (error) {
+        logToConsole(`❌ Error loading runs: ${error.message}`);
+    }
+}
+
+// Reset all runs
+async function resetAllRuns() {
+    if (!confirm('⚠️ Delete ALL benchmark runs? This action cannot be undone.')) return;
+    
+    try {
+        const response = await fetch('/api/runs', { method: 'DELETE' });
+        if (response.ok) {
+            logToConsole('🗑️ All runs deleted');
+            allRunsData = {};
+            loadHistoricalRuns();
+        } else {
+            logToConsole('❌ Failed to delete runs');
+        }
+    } catch (error) {
+        logToConsole(`❌ Reset error: ${error.message}`);
+    }
+}
+
+// Delete run
+async function deleteRun(runName) {
+    if (!confirm(`Delete '${runName}'?`)) return;
+    
+    try {
+        const response = await fetch(`/api/run/${runName}`, { method: 'DELETE' });
+        if (response.ok) {
+            logToConsole(`🗑️ Deleted: ${runName}`);
+            delete allRunsData[runName];
+            loadHistoricalRuns();
+        } else {
+            logToConsole('❌ Failed to delete run');
+        }
+    } catch (error) {
+        logToConsole(`❌ Delete error: ${error.message}`);
+    }
+}
+
+// View run
+function viewRun(runName) {
+    const run = allRunsData[runName];
+    if (run) {
+        currentRunData = run;
+        
+        // Update CPU chart
+        if (run.cpu1Thread && run.cpuAllThreads) {
+            updateChart('cpu', [run.cpu1Thread, run.cpuAllThreads]);
+            updateMetricCard('cpu', run.cpuAllThreads.toFixed(0));
+        }
+        
+        // Update memory/disk chart
+        if (run.memory || run.disk) {
+            updateChart('memoryDisk', [
+                run.memory?.read || 0,
+                run.memory?.write || 0,
+                run.disk?.read || 0,
+                run.disk?.write || 0
+            ]);
+            
+            if (run.memory) {
+                updateMetricCard('memory', (run.memory.read + run.memory.write).toFixed(1));
+            }
+            
+            if (run.disk) {
+                updateMetricCard('disk', (run.disk.read + run.disk.write).toFixed(1));
+            }
+        }
+        
+        // Update GPU chart
+        if (run.gpu) {
+            updateChart('gpu', [run.gpu.temperature || 0, run.gpu.utilization || 0]);
+            updateMetricCard('gpu', run.gpu.temperature || '--');
+        }
+        
+        // Update LLM chart
+        if (run.ollama) {
+            updateChart('llm', [
+                run.ollama.tokens_per_sec || 0,
+                run.ollama.latency || 0,
+                run.ollama.memory_mb || 0
+            ]);
+            updateMetricCard('llm', (run.ollama.tokens_per_sec || 0).toFixed(1));
+        }
+        
+        logToConsole(`📊 Viewing: ${runName}`);
+    }
+}
+
+// Add to comparison
+function addToComparison(runName) {
+    const checkbox = document.querySelector(`.comparison-checkbox[value="${runName}"]`);
+    if (checkbox) {
+        checkbox.checked = true;
+        updateComparisonChart();
+    }
+}
+
+// Update comparison chart
+function updateComparisonChart() {
+    const selected = document.querySelectorAll('.comparison-checkbox:checked');
+    const runs = Array.from(selected).map(cb => cb.value);
+    
+    if (runs.length < 2) {
+        logToConsole('⚠️ Select at least 2 runs');
+        return;
+    }
+    
+    const colors = ['#ff6b35', '#00d4ff', '#ffc107', '#9b59b6', '#e74c3c'];
+    const datasets = runs.map((runName, i) => {
+        const run = allRunsData[runName];
+        if (!run) return null;
+        
+        return {
+            label: runName,
+            data: [
+                run.cpu1Thread || 0,
+                run.cpuAllThreads || 0,
+                run.memory ? (run.memory.read + run.memory.write) / 2 : 0,
+                run.disk ? run.disk.read : 0,
+                run.disk ? run.disk.write : 0,
+                run.ollama?.tokens_per_sec || 0,
+                run.ollama?.latency ? run.ollama.latency * 1000 : 0, // Convert to ms
+                run.ollama?.memory_mb || 0
+            ],
+            borderColor: colors[i % colors.length],
+            backgroundColor: colors[i % colors.length] + '33',
+            fill: true
+        };
+    }).filter(d => d);
+    
+    if (charts.comparison) {
+        charts.comparison.data.datasets = datasets;
+        charts.comparison.update();
+        
+        // Show comparison section
+        document.getElementById('comparisonSection').style.display = 'block';
+        document.getElementById('comparisonSection').scrollIntoView({ behavior: 'smooth' });
+        
+        logToConsole(`📊 Comparing: ${runs.join(', ')}`);
+    }
+}
+
+// Clear comparison
+function clearComparison() {
+    document.querySelectorAll('.comparison-checkbox').forEach(cb => cb.checked = false);
+    if (charts.comparison) {
+        charts.comparison.data.datasets = [];
+        charts.comparison.update();
+    }
+    document.getElementById('comparisonSection').style.display = 'none';
+    logToConsole('🧹 Comparison cleared');
+}
+
+// Show comparison tab
+function showComparisonTab(tabType) {
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    tabBtns.forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    // This would switch chart types - simplified for now
+    logToConsole(`📊 Switching to ${tabType} view`);
+}
+
+// Refresh runs
+function refreshRuns() {
+    loadHistoricalRuns();
+}
+
+// Load Ollama models
+async function loadOllamaModels() {
+    logToConsole('🤖 Loading Ollama models...');
+    try {
+        const response = await fetch('/api/ollama/models');
+        const data = await response.json();
+
+        if (data.models && data.models.length > 0) {
+            ollamaModels = data.models;
+            const select = document.getElementById('ollamaModel');
+            select.innerHTML = '<option value="">Select a model...</option>';
+
+            data.models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model.name;
+                option.textContent = `${model.name} (${model.size})`;
+                select.appendChild(option);
+            });
+
+            // Auto-select first model
+            if (data.models.length > 0) {
+                select.value = data.models[0].name;
+            }
+
+            logToConsole(`✅ Loaded ${data.models.length} Ollama models`);
+        } else {
+            const select = document.getElementById('ollamaModel');
+            select.innerHTML = '<option value="">No models available</option>';
+            logToConsole('⚠️ No Ollama models found');
+        }
+    } catch (error) {
+        logToConsole(`❌ Error loading Ollama models: ${error.message}`);
+        const select = document.getElementById('ollamaModel');
+        select.innerHTML = '<option value="">Error loading models</option>';
+    }
+}
+
+// Toggle Ollama selector visibility
+function toggleOllamaSelector() {
+    const checkbox = document.getElementById('ollamaBenchmark');
+    const selector = document.getElementById('ollamaSelector');
+
+    if (checkbox.checked) {
+        selector.style.display = 'block';
+        // Load models if not already loaded
+        if (ollamaModels.length === 0) {
+            loadOllamaModels();
+        }
+    } else {
+        selector.style.display = 'none';
+    }
+}
+
+// LLM Response Modal Functions
+async function viewLlmResponse(runName) {
+    logToConsole(`🤖 Loading LLM response for: ${runName}`);
+
+    try {
+        const response = await fetch(`/api/run/${runName}/llm`);
+        const data = await response.json();
+
+        if (data.available && data.response) {
+            // Show modal with response
+            const modal = document.getElementById('llmResponseModal');
+            const content = document.getElementById('llmResponseContent');
+
+            content.textContent = data.response;
+            modal.style.display = 'block';
+
+            logToConsole(`✅ LLM response loaded for ${runName}`);
+        } else {
+            logToConsole(`⚠️ No LLM response available for ${runName}`);
+            alert('No LLM response available for this run.');
+        }
+    } catch (error) {
+        logToConsole(`❌ Error loading LLM response: ${error.message}`);
+        alert('Error loading LLM response.');
+    }
+}
+
+function closeLlmModal() {
+    const modal = document.getElementById('llmResponseModal');
+    modal.style.display = 'none';
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    const modal = document.getElementById('llmResponseModal');
+    if (event.target === modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// Initialize on load
+document.addEventListener('DOMContentLoaded', function() {
+    logToConsole('🎉 Dashboard initializing...');
+    initializeCharts();
+    loadHistoricalRuns();
+    connectWebSocket();
+
+    // Add event listener for Ollama checkbox
+    const ollamaCheckbox = document.getElementById('ollamaBenchmark');
+    if (ollamaCheckbox) {
+        ollamaCheckbox.addEventListener('change', toggleOllamaSelector);
+        // Initial check in case it's already checked
+        toggleOllamaSelector();
+    }
+
+    logToConsole('✅ Dashboard ready');
+});
+    </script>
+</body>
+</html>
